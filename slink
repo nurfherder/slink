@@ -1,0 +1,189 @@
+#!/bin/sh
+#==================================================
+# slink
+#
+# A script to create symbolic links based on a
+# simple config file in the current directory named
+# 'links'
+#
+# USEAGE:
+#       slink
+#
+# REQUIRES: sh,readlink,pwd,awk,sed,grep,ln,mv
+#
+# CREATED: Mon Mar 24 09:53:34 CDT 2014
+#==================================================
+
+#========================================
+# FUNCTIONS
+#========================================
+
+#--------------------------------------
+# Find a path relative to a reference
+# path.
+#
+# Globals:
+#   None
+# Arguments:
+#   $1=path
+#   $2=reference path
+# Returns:
+#   String relative_path
+#--------------------------------------
+find_relative_path() {
+  path="$1"
+  ref_path="$2"
+
+  relative_path="$path"
+  max_depth=8
+
+  #..CASE 1: paths are the same..
+  if [ "$path" = "$ref_path" ]; then
+    relative_path='./'
+    return 0
+  fi
+
+  #Remove matching parts of path
+  #..strip off root first...
+  path="${path#*/}"; ref_path="${ref_path#*/}"
+  i=0
+  while [ "${path%%/*}" = "${ref_path%%/*}" ]; do
+    path="${path#*/}"; ref_path="${ref_path#*/}"
+    : $(( i += 1 ))
+  done
+
+  #..CASE 2: paths only share root..
+  if [ $i -eq 0 ]; then
+    return 0
+  fi
+
+  #Add ".." for each extra part in ref_path
+  ref_path="$ref_path/"
+  i=0
+  until [ "${ref_path}" = '' -o $i -ge $max_depth ]; do
+    path="../$path"; ref_path="${ref_path#*/}"
+    : $(( i += 1 ))
+  done
+
+  #..CASE 3: paths aren't similar enough....
+  if [ $i -ge $max_depth ]; then
+    return 0
+  fi
+
+  #..CASE 4: return calculated path........
+  relative_path="$path"
+  return 0
+}
+
+#========================================
+# MAIN ()
+#========================================
+#..Record inital current working dir.....
+IWD="$(pwd -P)"
+
+#..Set timestamp for this session........
+timestamp=$(date '+%Y%m%d')
+
+#..Test that there is a config file in current dir..
+if [ ! -s  "${IWD}/links" ]; then
+  echo "ERROR: No file named 'links' in '${IWD}'."
+  exit 1
+fi
+
+rule_no=1; line_no=0
+#..Read config file, ./links.....
+while read line; do
+  : $(( line_no += 1 ))
+
+  #..Skip.comments.and.blank.lines......
+  tmp=$(echo "$line"| grep '^#')
+  if [ $? -eq 0 ]; then continue; fi
+  tmp=$(echo "$line"| grep '^[[:space:]]*$')
+  if [ $? -eq 0 ]; then continue; fi
+
+  #..We're not skipping so create some separation
+  echo '' #VERBOSE
+
+  #..Parse.line.................
+  l_path="$(echo "$line"| awk 'BEGIN {FS=" -> "} {print $1}')"
+  r_path="$(echo "$line"| awk 'BEGIN {FS=" -> "} {print $2}')"
+
+  #..Make.sure.values.are.not.null.....
+  if [ "${l_path}x" = 'x' -o "${r_path}x" = 'x' ]; then
+    echo "Line ${line_no}: Bad entry. Skipping"
+    echo "  '$line'"
+    continue
+  fi
+
+  #------------------------------
+  # Setup directory for link
+  #------------------------------
+  # (%HOME% valid only left of '->')
+  eval l_path=\`echo \"\$l_path\" \|sed \'s\|%HOME%\|${HOME}\|\'\`
+  l_dir="${l_path%/*}"
+  if [ ! -d "$l_dir" ]; then
+  #..Create link's directory if it doesn't exist................
+    echo " * STATE: Directory '${l_dir}' doesn't exist."
+    echo " ! MAKE:  Create directory '${l_dir}'"
+    mkdir -p "$l_dir"
+  else
+  #..Make path Cannonical (no symlink parts)......
+    cd "$l_dir"
+    l_dir="$(pwd -P)"
+    l_path="$l_dir/${l_path##*/}"
+  fi
+
+  #------------------------------
+  # Setup link's target path
+  #------------------------------
+  # (%RWD% valid only right of '->')
+  eval r_path=\`echo \"\$r_path\" \|sed \'s\|%RWD%\|$IWD\|\'\`
+  find_relative_path "${r_path%/*}" "${l_path%/*}"
+  r_path="$relative_path/${r_path##*/}"
+
+
+#  echo "REL PATH: $relative_path"
+#  echo "$l_path  $r_path"  ##DEBUG
+#  echo "$l_dir"
+
+  echo "Slink Rule ${rule_no} [Ln: ${line_no}]: (${l_path##*/})" #VERBOSE
+  echo " * GOAL:  symlink '$l_path' -> '$r_path'" #VERBOSE
+
+  #..Change to directory that will contain the symlink...
+  cd "${l_dir}"
+  if [ $? -ne 0 ]; then
+    echo "! ERROR: could enter link's directory '$l_dir'"
+  fi
+
+  #..Test that the file you are linking to exists...........
+  if [ ! -s "${r_path}" ]; then
+    echo " ! ERROR: '$r_path' doesn't exist. Skip this rule."
+    continue
+  fi
+
+  output=$(readlink "$l_path")
+  if [ $? -eq 0 ]; then
+    echo " * STATE: symlink '$l_path' -> '$output'"
+    if [ "x$r_path" = "x$output" ]; then
+      echo " * STATE: Current SymLink matches GOAL - Done!"
+    else
+      echo " * STATE: Current SymLink does not match GOAL."
+      echo " ! REMOVE: '$l_path'"
+      rm -f "$l_path"
+      echo " ! MAKE:  symlink '$l_path' -> '$r_path'"
+      ln -s "$r_path" "$l_path"
+    fi
+  else
+    if [ -e "$l_path" ]; then
+      echo " * STATE: '$l_path' already exists and isn't a SymLink."
+      echo " ! MOVE:  Rename to '$l_path.${timestamp}_SLINK'"
+      mv "$l_path" "$l_path.${timestamp}_SLINK"
+    else
+      echo " * STATE: file '$l_path' doesn't exist."
+    fi
+    echo " ! MAKE:  symlink '$l_path' -> '$r_path'"
+    ln -s "$r_path" "$l_path"
+  fi
+
+  : $(( rule_no += 1 ))
+done < "${IWD}/links"
