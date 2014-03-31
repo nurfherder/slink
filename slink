@@ -46,6 +46,7 @@ find_relative_path() {
   #Remove matching parts of path
   #..strip off root first...
   path="${path#*/}"; ref_path="${ref_path#*/}"
+  ref_path="$ref_path/"
   i=0
   while [ "${path%%/*}" = "${ref_path%%/*}" ]; do
     path="${path#*/}"; ref_path="${ref_path#*/}"
@@ -57,8 +58,6 @@ find_relative_path() {
     return 0
   fi
 
-  #Add ".." for each extra part in ref_path
-  ref_path="$ref_path/"
   i=0
   until [ "${ref_path}" = '' -o $i -ge $max_depth ]; do
     path="../$path"; ref_path="${ref_path#*/}"

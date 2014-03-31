@@ -1,7 +1,7 @@
 slink
 =====
 
-This is a script to create symbolic links based on the contents of file named `links`. I mainly created this to aid in deploying git managed projects without having to move files out of the repo.
+This is a script to create symbolic links based on the contents of file named `links` in whatever you current directory is. I mainly created this to aid in deploying git managed projects without having to move files out of the repo.
 
 Deploy:
 -------
