@@ -18,6 +18,10 @@
 # FUNCTIONS
 #========================================
 
+err() {
+  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')]: $@" >&2
+}
+
 #--------------------------------------
 # Find a path relative to a reference
 # path.
@@ -85,7 +89,7 @@ timestamp=$(date '+%Y%m%d')
 
 #..Test that there is a config file in current dir..
 if [ ! -s  "${IWD}/links" ]; then
-  echo "ERROR: No file named 'links' in '${IWD}'."
+  err "ERROR: No file named 'links' in '${IWD}'."
   exit 1
 fi
 
@@ -109,8 +113,8 @@ while read line; do
 
   #..Make.sure.values.are.not.null.....
   if [ "${l_path}x" = 'x' -o "${r_path}x" = 'x' ]; then
-    echo "Line ${line_no}: Bad entry. Skipping"
-    echo "  '$line'"
+    err "Line ${line_no}: Bad entry. Skipping"
+    err "  '$line'"
     continue
   fi
 
